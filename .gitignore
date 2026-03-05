@@ -20,6 +20,15 @@
 # production
 /build
 
+# VideoGen local data
+/input
+/output
+/db
+/data
+
+# Intermediate video files
+/output/temp
+
 # misc
 .DS_Store
 *.pem

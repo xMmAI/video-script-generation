@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Auto Instruction Generator (Script & Audio Generator)
 
-## Getting Started
+Turn a **silent screen recording** into a **timestamped narration script**, generate **per-segment voiceover audio**, and (optionally) **render a final MP4** with a picture-in-picture “avatar” overlay.
 
-First, run the development server:
+Built with **Next.js (App Router)** + local-first storage (SQLite) +:
+- **Gemini**: video → timestamped script
+- **ElevenLabs**: script segments → MP3
+- **FFmpeg**: stitch overlay + audio into a final MP4
+
+## What it does
+
+- **Upload or scan**: drop a `.mov` / `.mp4` into `/input` (or upload via the UI)
+- **Process**: sends the video to Gemini and generates a markdown script like:
+  - `## 0.0s – 3.7s` + narration text
+- **Review & edit**: adjust narration per segment in the job page
+- **Generate audio**: creates one MP3 per segment in `/output/<jobId>/`
+- **Render (optional)**: stitches your screen recording + avatar overlay + audio into `final.mp4`
+
+## Requirements
+
+- **Node.js**: recent LTS recommended
+- **Gemini API key**: `GEMINI_API_KEY`
+- **ElevenLabs API key**: `ELEVENLABS_API_KEY`
+  - Voice ID: `ELEVENLABS_VOICE_ID` (required; see your ElevenLabs dashboard)
+- **FFmpeg + ffprobe** (only required for “Render Final Video”)
+  - macOS: `brew install ffmpeg`
+  - Windows: `winget install ffmpeg`
+
+## Quickstart (local)
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create `.env.local` in the project root:
+
+```bash
+GEMINI_API_KEY="..."
+ELEVENLABS_API_KEY="..."
+ELEVENLABS_VOICE_ID="your_elevenlabs_voice_id"
+```
+
+3. Start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open `http://localhost:3000` and run a job:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Upload a `.mov` / `.mp4` in the UI **or** copy a file into `/input`
+- Click **Scan for new videos**
+- Click **Process** on the job (Gemini generates the timestamped script)
+- Open the job and **edit narration per segment**
+- Click **Generate audio** (ElevenLabs creates per-segment MP3s)
+- (Optional) Click **Render Final Video** (FFmpeg generates `/output/<jobId>/final.mp4`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Files & folders
 
-## Learn More
+- `input/`: your raw screen recordings (not committed)
+- `output/`: generated scripts/audio/videos (not committed)
+  - `output/<jobId>/<basename>_script.md`
+  - `output/<jobId>/<start>-<end>.mp3` (per-segment)
+  - `output/<jobId>/audio.mp3` (created during render if missing)
+  - `output/<jobId>/final.mp4` (render output)
+- `db/`: local SQLite database (`db/videogen.db`) (not committed)
+- `assets/`: avatar overlay media
+  - The renderer looks for `assets/talking_whisk.mp4`, `assets/talking_whisk.mov`, or `assets/avatar.mp4`
+  - For open-source distribution, you’ll typically provide your own `assets/avatar.mp4` locally (don’t commit proprietary media)
 
-To learn more about Next.js, take a look at the following resources:
+## API overview
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+These are the main endpoints used by the UI:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `POST /api/upload`: upload a `.mov`/`.mp4` into `/input`
+- `GET /api/scan`: scan `/input` and create new “jobs” for new files
+- `GET /api/jobs`: list jobs
+- `GET /api/jobs/:id`: job detail
+- `POST /api/process`: Gemini video → timestamped script (writes to `/output/<jobId>/..._script.md`)
+- `PATCH /api/jobs/:id/script/segment`: update the narrative text of one segment
+- `POST /api/jobs/:id/audio`: generate per-segment MP3s via ElevenLabs
+- `POST /api/render`: FFmpeg stitch → `/output/<jobId>/final.mp4`
+- `GET /api/output/...`: serve files out of `/output` to the browser
 
-## Deploy on Vercel
+## Notes (privacy + cost)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- This project is **local-first** for files and DB, but it **uploads video to Gemini** and sends narration text to **ElevenLabs**.
+- Both services may have **usage costs**; avoid huge/long videos until you’re happy with prompts and flow.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+Add a `LICENSE` file before open-sourcing (MIT/Apache-2.0 are common choices).
