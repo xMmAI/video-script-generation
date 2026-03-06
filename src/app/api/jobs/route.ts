@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import db from '@/lib/db';
+import { findJobIdByInputFile, rehydrateJobFromDisk } from '@/lib/files';
 import type { Job } from '@/types';
 
 function rowToJob(row: Record<string, unknown>): Job {
@@ -22,7 +23,7 @@ function rowToJob(row: Record<string, unknown>): Job {
 
 /**
  * GET /api/jobs
- * Returns all jobs ordered by created_at desc.
+ * Returns all jobs ordered by created_at desc. Rehydrates any job that is pending but has output on disk.
  */
 export async function GET() {
   const rows = db
@@ -30,8 +31,32 @@ export async function GET() {
       'SELECT id, title, status, input_file, script_path, audio_path, avatar_intro_path, avatar_outro_path, final_video_path, youtube_url, created_at, updated_at FROM jobs ORDER BY created_at DESC'
     )
     .all() as Record<string, unknown>[];
-  const jobs = rows.map(rowToJob);
-  return NextResponse.json(jobs);
+  const now = new Date().toISOString();
+  const updateStmt = db.prepare(
+    'UPDATE jobs SET status = ?, script_path = ?, audio_path = ?, final_video_path = ?, updated_at = ? WHERE id = ?'
+  );
+  for (const row of rows) {
+    if (row.status === 'pending' && !row.script_path && row.input_file) {
+      const outputFolderId = findJobIdByInputFile(row.input_file as string) ?? (row.id as string);
+      const rehydrated = rehydrateJobFromDisk(outputFolderId);
+      if (rehydrated) {
+        updateStmt.run(
+          rehydrated.status,
+          rehydrated.script_path,
+          rehydrated.audio_path,
+          rehydrated.final_video_path ?? null,
+          now,
+          row.id
+        );
+        row.status = rehydrated.status;
+        row.script_path = rehydrated.script_path;
+        row.audio_path = rehydrated.audio_path;
+        row.final_video_path = rehydrated.final_video_path ?? null;
+        row.updated_at = now;
+      }
+    }
+  }
+  return NextResponse.json(rows.map(rowToJob));
 }
 
 /**

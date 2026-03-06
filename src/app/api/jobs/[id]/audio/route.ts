@@ -85,11 +85,12 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Script has no segments to speak.' }, { status: 400 });
   }
 
+  const outputFolderId = row.script_path.split('/')[0] ?? jobId;
   const now = new Date().toISOString();
   db.prepare('UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?').run('synthesizing', now, jobId);
 
   try {
-    const dir = createJobOutputDir(jobId);
+    const dir = createJobOutputDir(outputFolderId);
     const writtenPaths: string[] = [];
 
     for (const segment of toProcess) {
@@ -97,7 +98,7 @@ export async function POST(request: Request, context: RouteContext) {
       const fileName = segmentToAudioFilename(segment);
       const audioPath = path.join(dir, fileName);
       fs.writeFileSync(audioPath, audioBuffer);
-      writtenPaths.push(`${jobId}/${fileName}`);
+      writtenPaths.push(`${outputFolderId}/${fileName}`);
     }
 
     const firstPath = writtenPaths[0];

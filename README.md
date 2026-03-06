@@ -84,6 +84,19 @@ These are the main endpoints used by the UI:
 - `POST /api/render`: FFmpeg stitch → `/output/<jobId>/final.mp4`
 - `GET /api/output/...`: serve files out of `/output` to the browser
 
+## Editing Gemini prompts
+
+Script generation (video → timestamped narration) is driven by a single system prompt. To change tone, style, or instructions:
+
+1. **File**: `src/lib/gemini.ts`
+2. **Prompt constant**: `TRANSCRIPT_PROMPT` (near the top of the file). Edit the multi-line template string to adjust:
+   - Narrator style (e.g. warm, formal, concise)
+   - Wording rules (e.g. “don’t start every segment with ‘You can…’”)
+   - Output format reminder (the prompt tells the model to return a JSON array of `{ start, end, text }` segments)
+3. **Model**: `GEMINI_TRANSCRIPTION_MODEL` is set to `gemini-2.5-flash`. Change this constant if you want to use another Gemini model.
+
+The code expects the model to return **only** a JSON array of objects with `start` (seconds), `end` (seconds), and `text` (string). If you change the requested format in the prompt, you must update the parsing in `generateTimestampedScript` (and any use of `ScriptSegment`) in the same file.
+
 ## Notes (privacy + cost)
 
 - This project is **local-first** for files and DB, but it **uploads video to Gemini** and sends narration text to **ElevenLabs**.

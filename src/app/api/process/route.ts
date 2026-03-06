@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import db from '@/lib/db';
-import { INPUT_DIR } from '@/lib/files';
-import { writeScriptMd } from '@/lib/files';
+import { INPUT_DIR, writeInputFileManifest, writeScriptMd } from '@/lib/files';
 import { generateTimestampedScript } from '@/lib/gemini';
 import fs from 'fs';
 
@@ -67,6 +66,7 @@ export async function POST(request: Request) {
 
     const writtenPath = writeScriptMd(jobId, scriptContent, inputFile);
     const scriptPath = `${jobId}/${path.basename(writtenPath)}`;
+    writeInputFileManifest(jobId, inputFile);
     db.prepare(
       'UPDATE jobs SET status = ?, script_path = ?, updated_at = ? WHERE id = ?'
     ).run('review', scriptPath, new Date().toISOString(), jobId);

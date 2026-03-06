@@ -94,12 +94,13 @@ export default function JobDetailPage() {
         return;
       }
       const parsed = parseScriptMdToSegmentsClient(md);
+      const outputFolderId = job.script_path.split('/')[0] ?? job.id;
       const rows: SegmentRow[] = parsed.map((seg, i) => ({
         index: i,
         start: seg.start,
         end: seg.end,
         text: seg.text,
-        audioUrl: `/api/output/${job.id}/${seg.start.toFixed(1)}-${seg.end.toFixed(1)}.mp3`,
+        audioUrl: `/api/output/${outputFolderId}/${seg.start.toFixed(1)}-${seg.end.toFixed(1)}.mp3`,
       }));
       setSegments(rows);
     } finally {

@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import db from '@/lib/db';
-import { scanInputFolder } from '@/lib/files';
+import { findJobIdByInputFile, rehydrateJobFromDisk, scanInputFolder } from '@/lib/files';
 
 /**
  * GET /api/scan
- * Scans /input folder, creates job records for new .MOV files not already in DB.
- * Returns list of newly created jobs.
+ * Scans /input folder. For files not already in DB: if output exists (from a previous run),
+ * re-registers that job so completed scripts/audio are not lost; otherwise creates a new pending job.
  */
 export async function GET() {
   const files = scanInputFolder();
-  const rows = db.prepare('SELECT input_file FROM jobs WHERE input_file IS NOT NULL').all() as Array<{ input_file: string | null }>;
+  const rows = db.prepare('SELECT id, input_file FROM jobs').all() as Array<{ id: string; input_file: string | null }>;
   const existingInputs = new Set(rows.map((r) => r.input_file).filter(Boolean) as string[]);
+  const existingIds = new Set(rows.map((r) => r.id));
 
   const newFiles = files.filter((f) => !existingInputs.has(f));
   const created: Array<{
@@ -30,16 +31,45 @@ export async function GET() {
   `);
 
   for (const filename of newFiles) {
-    const id = uuidv4();
-    insert.run(id, null, 'pending', filename, null, null, null, null, null, null, now, now);
-    created.push({
-      id,
-      title: null,
-      status: 'pending',
-      input_file: filename,
-      created_at: now,
-      updated_at: now,
-    });
+    const existingJobId = findJobIdByInputFile(filename);
+    const rehydrated = existingJobId ? rehydrateJobFromDisk(existingJobId) : null;
+
+    if (existingJobId && rehydrated && !existingIds.has(existingJobId)) {
+      insert.run(
+        existingJobId,
+        null,
+        rehydrated.status,
+        filename,
+        rehydrated.script_path,
+        rehydrated.audio_path,
+        null,
+        null,
+        rehydrated.final_video_path ?? null,
+        null,
+        now,
+        now
+      );
+      existingIds.add(existingJobId);
+      created.push({
+        id: existingJobId,
+        title: null,
+        status: rehydrated.status,
+        input_file: filename,
+        created_at: now,
+        updated_at: now,
+      });
+    } else {
+      const id = uuidv4();
+      insert.run(id, null, 'pending', filename, null, null, null, null, null, null, now, now);
+      created.push({
+        id,
+        title: null,
+        status: 'pending',
+        input_file: filename,
+        created_at: now,
+        updated_at: now,
+      });
+    }
   }
 
   return NextResponse.json({ created, scanned: files.length });

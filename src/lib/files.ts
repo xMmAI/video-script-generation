@@ -1,9 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import type { ScriptSegment } from '@/types';
+import type { JobStatus, ScriptSegment } from '@/types';
 
 export const INPUT_DIR = path.join(process.cwd(), 'input');
 export const OUTPUT_DIR = path.join(process.cwd(), 'output');
+
+/** Filename stored in each job output dir to link output back to input file (for rehydration after DB loss). */
+const INPUT_FILE_MANIFEST = '.input_file';
 
 export function ensureDirs(): void {
   [INPUT_DIR, OUTPUT_DIR].forEach((dir) => {
@@ -126,4 +129,76 @@ export function patchSegmentText(
   segments[segmentIndex] = { ...segments[segmentIndex], text: newText };
   fs.writeFileSync(fullPath, segmentsToScriptMd(segments), 'utf-8');
   return true;
+}
+
+/**
+ * Writes a manifest in output/[jobId]/.input_file so we can re-associate this output
+ * with the input file after DB loss (e.g. Gemini retention expiry).
+ */
+export function writeInputFileManifest(jobId: string, inputFileName: string): void {
+  const dir = path.join(OUTPUT_DIR, jobId);
+  if (!fs.existsSync(dir)) return;
+  fs.writeFileSync(path.join(dir, INPUT_FILE_MANIFEST), inputFileName, 'utf-8');
+}
+
+/**
+ * Script filename we expect for an input file (e.g. "foo.mov" -> "foo_script.md").
+ * Used to find output folder when .input_file manifest is missing (jobs processed before manifest existed).
+ */
+function scriptFilenameForInput(inputFile: string): string {
+  const base = path.basename(inputFile, path.extname(inputFile));
+  return `${base}_script.md`;
+}
+
+/**
+ * Finds a job id whose output folder belongs to this input file.
+ * 1) Checks .input_file manifest in each output dir.
+ * 2) If none match, looks for a dir containing {inputBasename}_script.md (handles jobs processed before manifest existed).
+ */
+export function findJobIdByInputFile(inputFile: string): string | null {
+  ensureDirs();
+  const entries = fs.readdirSync(OUTPUT_DIR, { withFileTypes: true });
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const manifestPath = path.join(OUTPUT_DIR, ent.name, INPUT_FILE_MANIFEST);
+    if (fs.existsSync(manifestPath)) {
+      const content = fs.readFileSync(manifestPath, 'utf-8').trim();
+      if (content === inputFile) return ent.name;
+    }
+  }
+  const expectedScript = scriptFilenameForInput(inputFile);
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const scriptPath = path.join(OUTPUT_DIR, ent.name, expectedScript);
+    if (fs.existsSync(scriptPath)) return ent.name;
+  }
+  return null;
+}
+
+export type RehydratedJob = {
+  script_path: string;
+  audio_path: string | null;
+  status: JobStatus;
+  final_video_path?: string | null;
+};
+
+/**
+ * Derives script_path, audio_path, status, and optional final_video_path from files on disk for a job.
+ * Use to rehydrate job state when DB says pending but output exists (e.g. after DB reset).
+ */
+export function rehydrateJobFromDisk(jobId: string): RehydratedJob | null {
+  const dir = path.join(OUTPUT_DIR, jobId);
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir);
+  const scriptFile = files.find((f) => f.endsWith('_script.md') || f === 'script.md');
+  if (!scriptFile) return null;
+  const script_path = `${jobId}/${scriptFile}`;
+  const hasAudioMp3 = files.includes('audio.mp3');
+  const segmentMp3s = files.filter((f) => /^\d+\.\d+-\d+\.\d+\.mp3$/.test(f));
+  const hasAudio = hasAudioMp3 || segmentMp3s.length > 0;
+  const audio_path = hasAudio ? `${jobId}/audio.mp3` : null;
+  const hasFinal = files.includes('final.mp4');
+  const final_video_path = hasFinal ? `${jobId}/final.mp4` : null;
+  const status: JobStatus = hasFinal ? 'rendered' : hasAudio ? 'done' : 'review';
+  return { script_path, audio_path, status, final_video_path };
 }

@@ -25,8 +25,9 @@ Style guidelines:
 - Write like a helpful human narrator: warm, clear, and varied. Avoid robotic or repetitive phrasing.
 - Vary sentence length and structure. Mix short punchy lines with longer explanations where it fits.
 - Don’t start every segment with "You can..." or "Click the..." or "Now...". Use different openings and phrasing.
-- Prefer active, concrete language. Describe what we see and do in a way that sounds like someone talking a viewer through it.
+- Prefer active, concrete language. Describe what we see and do in a way that sounds like someone talking a viewer through it. While using the correct button names and menu names.
 - Keep each segment to one clear idea, but let the tone feel natural—not like a manual.
+- Use inclusive language
 
 For each distinct step or scene change, output one segment with:
 - start: start time in seconds (number)

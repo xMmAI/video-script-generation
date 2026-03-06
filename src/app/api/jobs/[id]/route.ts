@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { findJobIdByInputFile, rehydrateJobFromDisk } from '@/lib/files';
 import type { Job, JobStatus } from '@/types';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -23,13 +24,31 @@ function rowToJob(row: Record<string, unknown>): Job {
 
 /**
  * GET /api/jobs/[id]
- * Returns a single job by id.
+ * Returns a single job by id. Rehydrates from disk if DB says pending but output exists.
  */
 export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  let row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!row) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+  }
+  if (row.status === 'pending' && !row.script_path && row.input_file) {
+    const outputFolderId = findJobIdByInputFile(row.input_file as string) ?? id;
+    const rehydrated = rehydrateJobFromDisk(outputFolderId);
+    if (rehydrated) {
+      const now = new Date().toISOString();
+      db.prepare(
+        'UPDATE jobs SET status = ?, script_path = ?, audio_path = ?, final_video_path = ?, updated_at = ? WHERE id = ?'
+      ).run(
+        rehydrated.status,
+        rehydrated.script_path,
+        rehydrated.audio_path,
+        rehydrated.final_video_path ?? null,
+        now,
+        id
+      );
+      row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Record<string, unknown>;
+    }
   }
   return NextResponse.json(rowToJob(row));
 }
