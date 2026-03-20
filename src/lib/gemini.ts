@@ -7,6 +7,7 @@ import {
   createUserContent,
   createPartFromUri,
 } from '@google/genai';
+import { jsonrepair } from 'jsonrepair';
 import type { ScriptSegment } from '@/types';
 
 export const GEMINI_TRANSCRIPTION_MODEL = 'gemini-2.5-flash';
@@ -23,6 +24,7 @@ const TRANSCRIPT_PROMPT = `You are analyzing a silent screen recording (no voice
 
 Style guidelines:
 - Write like a helpful human narrator: warm, clear, and varied. Avoid robotic or repetitive phrasing.
+- Start your video with an greeting and introduction to the video. This is a video tutorial, so you can start with "In this video, we'll..." or "Welcome to..." or "Greetings!, in this video we'll...". And provide a short introduction to the video, and what we'll be covering.
 - Vary sentence length and structure. Mix short punchy lines with longer explanations where it fits.
 - Don’t start every segment with "You can..." or "Click the..." or "Now...". Use different openings and phrasing.
 - Prefer active, concrete language. Describe what we see and do in a way that sounds like someone talking a viewer through it. While using the correct button names and menu names.
@@ -157,7 +159,18 @@ export async function generateTimestampedScript(
   }
 
   const jsonStr = extractFirstJsonArray(text);
-  const parsed = JSON.parse(jsonStr) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr) as unknown;
+  } catch (parseErr) {
+    try {
+      const repaired = jsonrepair(jsonStr);
+      parsed = JSON.parse(repaired) as unknown;
+    } catch (repairErr) {
+      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      throw new Error(`Invalid JSON from Gemini (e.g. unescaped quotes in text): ${msg}`);
+    }
+  }
   if (!Array.isArray(parsed)) {
     throw new Error('Gemini response is not a JSON array');
   }
