@@ -102,6 +102,44 @@ function extractFirstJsonArray(text: string): string {
 }
 
 /**
+ * Asks Gemini to polish a single narration segment for grammar and natural speech flow,
+ * constrained to fit within the available time window at ~150 wpm voiceover pace.
+ * Returns only the improved plain text — no markdown, no explanation.
+ */
+export async function polishSegmentText(
+  text: string,
+  durationSeconds: number
+): Promise<string> {
+  const ai = getClient();
+
+  const prompt = `You are a voiceover script editor for screen recording tutorials.
+
+Segment duration: ${durationSeconds.toFixed(1)} seconds (at ~150 words/minute, that's ~${(durationSeconds * 2.5).toFixed(0)} words maximum).
+
+Your task:
+- Fix grammar and spelling errors
+- Improve natural speech flow so it sounds like a person speaking, not reading
+- If the text is too long for the duration, trim it while keeping the core message
+- Do not add new information or change the meaning
+
+Return ONLY the improved plain text. No quotes, no markdown, no explanation.
+
+Original:
+${text}`;
+
+  const response = await ai.models.generateContent({
+    model: GEMINI_TRANSCRIPTION_MODEL,
+    contents: createUserContent([prompt]),
+  });
+
+  const result = response.text?.trim();
+  if (!result) {
+    throw new Error('Gemini returned no polished text');
+  }
+  return result;
+}
+
+/**
  * Uploads the video at videoPath to Gemini, generates a timestamped script, and returns segments.
  * videoPath must be an absolute path to a .MOV or other supported video file.
  */

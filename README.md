@@ -137,12 +137,21 @@ If no avatar file is found, the render step will produce a clean screen recordin
 
 ## Customizing the narration style
 
-The AI prompt that tells Gemini how to write narration is in `src/lib/gemini.ts` — look for the constant `TRANSCRIPT_PROMPT`. You can edit it to change:
+The AI prompt that tells Gemini how to write the narration script is in `src/lib/gemini.ts`. Open that file and look for the constant `TRANSCRIPT_PROMPT` near the top — it's a multi-line string that starts with:
 
-- Tone (formal, casual, enthusiastic, etc.)
-- Length of segments
-- Whether to address the viewer directly
-- Specific phrases to avoid
+```
+You are analyzing a silent screen recording...
+```
+
+Edit the text inside that constant to change how Gemini writes the narration. Some ideas:
+
+- **Change the tone** — add something like *"Write in a friendly, enthusiastic tone"* or *"Use a formal, professional style"*
+- **Add context about your product** — e.g. *"This is a tutorial for [Your App Name], a project management tool for small teams"*
+- **Control segment length** — e.g. *"Keep each segment to 1–2 sentences"* or *"Allow up to 3 sentences per segment for complex steps"*
+- **Avoid certain phrases** — e.g. *"Never start a sentence with 'Simply' or 'Just'"*
+- **Change the intro style** — the prompt currently asks for a greeting and introduction; you can remove this or change the format
+
+After saving your edit, the new prompt takes effect the next time you click **Process** on a job — no restart needed.
 
 ---
 
