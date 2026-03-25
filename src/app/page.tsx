@@ -175,18 +175,20 @@ export default function Page() {
     refresh();
   }, []);
 
-  async function handleProcess(jobId: string) {
-    setProcessing(jobId);
+  async function handleProcess(job: Job) {
+    setProcessing(job.id);
+    const isRenderRetry = !!job.script_path && !!job.audio_path;
     try {
-      const res = await fetch('/api/process', {
+      const url = isRenderRetry ? '/api/render' : '/api/process';
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId }),
+        body: JSON.stringify({ jobId: job.id }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data.details ?? data.error ?? `Request failed (${res.status})`;
-        alert(`Process failed: ${msg}`);
+        alert(`${isRenderRetry ? 'Render' : 'Process'} failed: ${msg}`);
       }
       await refresh();
     } finally {
@@ -197,9 +199,9 @@ export default function Page() {
   return (
     <main className="min-h-screen p-6">
       <div className="mx-auto max-w-4xl">
-        <h1 className="text-2xl font-semibold">Script & Audio Generator</h1>
+        <h1 className="text-2xl font-semibold">Narri: Script & Audio Generator</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Upload a video or scan for videos already in the input folder.
+          Upload a video to generate a script and audio.
         </p>
 
         <div className="mt-4">
@@ -209,6 +211,9 @@ export default function Page() {
         <Button onClick={refresh} disabled={loading} className="mt-4" variant="outline">
           {loading ? 'Loading…' : 'Scan for new videos'}
         </Button>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Use this if you dropped files directly into the <code>/input</code> folder outside the browser.
+        </p>
 
         <div className="mt-6 space-y-4">
           {jobs.length === 0 && !loading && (
@@ -230,7 +235,7 @@ export default function Page() {
                       size="sm"
                       variant={job.status === 'failed' ? 'outline' : 'default'}
                       disabled={processing === job.id}
-                      onClick={() => handleProcess(job.id)}
+                      onClick={() => handleProcess(job)}
                     >
                       {processing === job.id ? 'Processing…' : job.status === 'failed' ? 'Retry' : 'Process'}
                     </Button>

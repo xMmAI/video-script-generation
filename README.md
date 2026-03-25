@@ -1,6 +1,6 @@
-# Auto Instruction Gen
+# Narri - Script & Audio Generator
 
-Turn a **silent screen recording** into a **fully narrated video** — automatically.
+Turn a **silent screen recording** into a **fully narrated video**.
 
 This tool watches you record your screen, writes a timestamped narration script using AI, lets you edit it, generates voiceover audio, and stitches everything into a final MP4 with an optional picture-in-picture avatar overlay.
 
@@ -69,9 +69,15 @@ bun install
 In the project folder, create a file called `.env.local` and paste in your keys:
 
 ```
+# Required
 GEMINI_API_KEY=your_gemini_key_here
 ELEVENLABS_API_KEY=your_elevenlabs_key_here
 ELEVENLABS_VOICE_ID=your_voice_id_here
+
+# Optional — customize the narration for your product (see "Customizing the narration" below)
+PRODUCT_NAME=YourApp
+PRODUCT_DESCRIPTION=a short description of what your product does and who it's for
+PRODUCT_AUDIENCE=your target users learning to use the software
 ```
 
 > This file is never committed to git — your keys stay private.
@@ -135,23 +141,24 @@ If no avatar file is found, the render step will produce a clean screen recordin
 
 ---
 
-## Customizing the narration style
+## Customizing the narration for your product
 
-The AI prompt that tells Gemini how to write the narration script is in `src/lib/gemini.ts`. Open that file and look for the constant `TRANSCRIPT_PROMPT` near the top — it's a multi-line string that starts with:
+By default the narration prompt is generic. Add these optional variables to `.env.local` to tailor the script to your specific product and audience:
 
 ```
-You are analyzing a silent screen recording...
+PRODUCT_NAME=YourApp
+PRODUCT_DESCRIPTION=a short description of what your product does and who it's for
+PRODUCT_AUDIENCE=your target users learning to use the software
 ```
 
-Edit the text inside that constant to change how Gemini writes the narration. Some ideas:
+**Example — a recipe app:**
+```
+PRODUCT_NAME=CookFlow
+PRODUCT_DESCRIPTION=a recipe and meal planning app for home cooks
+PRODUCT_AUDIENCE=home cooks learning to plan meals and save recipes
+```
 
-- **Change the tone** — add something like *"Write in a friendly, enthusiastic tone"* or *"Use a formal, professional style"*
-- **Add context about your product** — e.g. *"This is a tutorial for [Your App Name], a project management tool for small teams"*
-- **Control segment length** — e.g. *"Keep each segment to 1–2 sentences"* or *"Allow up to 3 sentences per segment for complex steps"*
-- **Avoid certain phrases** — e.g. *"Never start a sentence with 'Simply' or 'Just'"*
-- **Change the intro style** — the prompt currently asks for a greeting and introduction; you can remove this or change the format
-
-After saving your edit, the new prompt takes effect the next time you click **Process** on a job — no restart needed.
+Gemini will use your product name and audience in every script it generates. Restart the dev server after changing these values.
 
 ---
 

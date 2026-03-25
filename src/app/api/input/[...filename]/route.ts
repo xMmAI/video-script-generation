@@ -49,9 +49,18 @@ export async function GET(
     const stream = fs.createReadStream(resolved, { start, end });
     const webStream = new ReadableStream({
       start(controller) {
-        stream.on('data', (chunk) => controller.enqueue(chunk));
-        stream.on('end', () => controller.close());
-        stream.on('error', (err) => controller.error(err));
+        stream.on('data', (chunk) => {
+          if (controller.desiredSize !== null) controller.enqueue(chunk);
+        });
+        stream.on('end', () => {
+          if (controller.desiredSize !== null) controller.close();
+        });
+        stream.on('error', (err) => {
+          if (controller.desiredSize !== null) controller.error(err);
+        });
+      },
+      cancel() {
+        stream.destroy();
       },
     });
 
@@ -70,9 +79,18 @@ export async function GET(
   const stream = fs.createReadStream(resolved);
   const webStream = new ReadableStream({
     start(controller) {
-      stream.on('data', (chunk) => controller.enqueue(chunk));
-      stream.on('end', () => controller.close());
-      stream.on('error', (err) => controller.error(err));
+      stream.on('data', (chunk) => {
+        if (controller.desiredSize !== null) controller.enqueue(chunk);
+      });
+      stream.on('end', () => {
+        if (controller.desiredSize !== null) controller.close();
+      });
+      stream.on('error', (err) => {
+        if (controller.desiredSize !== null) controller.error(err);
+      });
+    },
+    cancel() {
+      stream.destroy();
     },
   });
 

@@ -630,7 +630,7 @@ export default function JobDetailPage() {
 
         {SegmentPanel()}
 
-        {job?.status === 'done' && (
+        {(job?.status === 'done' || (job?.status === 'failed' && !!job?.audio_path)) && (
           <div className="rounded-lg border border-border bg-muted/50 p-4">
             <p className="text-sm font-medium">Final video</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -653,7 +653,12 @@ export default function JobDetailPage() {
 
         {job?.status === 'rendered' && job.final_video_path && (
           <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-3">
-            <p className="text-sm font-medium">Final video</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Final video</p>
+              <Button variant="outline" size="sm" onClick={handleRenderVideo} disabled={rendering}>
+                {rendering ? 'Rendering…' : 'Re-render'}
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">Your video is ready to watch or download.</p>
             <video
               controls

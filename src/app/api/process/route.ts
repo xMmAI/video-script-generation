@@ -55,7 +55,21 @@ export async function POST(request: Request) {
   );
 
   try {
-    const segments = await generateTimestampedScript(videoPath);
+    // Retry up to 3 times — Gemini occasionally returns malformed JSON.
+    let segments;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        segments = await generateTimestampedScript(videoPath);
+        break;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[POST /api/process] ${jobId} attempt ${attempt}/3 failed: ${msg}`);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+      }
+    }
+    if (!segments) throw lastErr;
 
     const mdLines = segments.map(
       (s) => `## ${s.start.toFixed(1)}s – ${s.end.toFixed(1)}s\n\n${s.text}`

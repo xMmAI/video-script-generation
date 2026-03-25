@@ -2,6 +2,7 @@
  * Gemini File API + generateContent for timestamped script from silent screen recordings.
  */
 
+import path from 'path';
 import {
   GoogleGenAI,
   createUserContent,
@@ -20,24 +21,74 @@ function getClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-const TRANSCRIPT_PROMPT = `You are analyzing a silent screen recording (no voiceover). Produce a timestamped script that will be read aloud as a natural, conversational voiceover—not a stiff list of steps.
+const PRODUCT_NAME = process.env.PRODUCT_NAME ?? 'BakeSuite';
+const PRODUCT_DESCRIPTION =
+  process.env.PRODUCT_DESCRIPTION ??
+  'a bakery management platform for small bakery businesses that helps bakeries manage orders, quotes, invoices, contacts, inventory, and payments';
+const PRODUCT_AUDIENCE =
+  process.env.PRODUCT_AUDIENCE ?? 'bakery owners or staff learning to use the software';
 
-Style guidelines:
-- Write like a helpful human narrator: warm, clear, and varied. Avoid robotic or repetitive phrasing.
-- Start your video with an greeting and introduction to the video. This is a video tutorial, so you can start with "In this video, we'll..." or "Welcome to..." or "Greetings!, in this video we'll...". And provide a short introduction to the video, and what we'll be covering.
-- Vary sentence length and structure. Mix short punchy lines with longer explanations where it fits.
-- Don’t start every segment with "You can..." or "Click the..." or "Now...". Use different openings and phrasing.
-- Prefer active, concrete language. Describe what we see and do in a way that sounds like someone talking a viewer through it. While using the correct button names and menu names.
-- Keep each segment to one clear idea, but let the tone feel natural—not like a manual.
-- Use inclusive language
+const TRANSCRIPT_PROMPT = `You are analyzing a silent screen recording of ${PRODUCT_NAME}. Produce a timestamped narration script to be read aloud as a warm, natural tutorial voiceover.
 
-For each distinct step or scene change, output one segment with:
+PRODUCT CONTEXT:
+- The product is called ${PRODUCT_NAME}
+- It is ${PRODUCT_DESCRIPTION}
+- Viewers are ${PRODUCT_AUDIENCE}
+
+INTRO (first segment, 0–3s approx):
+- Always open with a brief welcome and a specific description of what this tutorial covers
+- Name the exact feature or workflow being demonstrated — be specific, not generic
+- Use: "Welcome — in this tutorial, we’ll walk through how to..." or "Greetings! In this tutorial, we’ll explore..."
+- Always say "tutorial" not "video"
+
+NARRATION STYLE:
+- Write like a helpful human talking a viewer through the screen — warm, clear, and varied
+- Use inclusive language: "we’ll", "let’s", "you’ll see"
+- Mix short punchy lines with longer explanations where it fits
+- Don’t start every segment with the same word — vary your openings
+- Use correct UI names: button labels, page names, section headings exactly as shown on screen
+- NEVER use these words: modal, dialog, widget, component, element, popup — instead describe what it looks like (e.g. "a panel slides open", "a small window appears", "a form pops up")
+- NEVER use double-quote characters (") inside any text value
+
+WHAT TO NARRATE:
+- Describe what’s visible and what action is taken, in a way that guides the viewer
+- Follow an action → outcome rhythm where natural: "Click X — a form opens where you can..."
+- When a feature has a clear benefit, briefly explain WHY it matters: e.g. "Due dates you set here will also appear on the customer invoice."
+- Use ${PRODUCT_NAME} by name when referring to the app itself
+
+HANDLING DEAD TIME:
+- When the screen shows navigation, loading, waiting, or minimal change over a long period — collapse it into ONE short segment covering the whole gap
+- Do not create multiple segments for filler actions like clicking a menu, waiting for a page to load, or scrolling with nothing new happening
+
+SEGMENT RULES:
+- One clear idea per segment — this can be 1 to 2 sentences if needed
+- Match segment boundaries to meaningful scene or action changes, not arbitrary time splits
+- Segments covering long pauses or navigation can span many seconds — that is fine
+
+For each segment output:
 - start: start time in seconds (number)
 - end: end time in seconds (number)
-- text: one sentence for that moment, written to be read aloud in a natural voice
+- text: the narration for that moment, written to be read aloud naturally
 
 Return ONLY a valid JSON array of objects, no markdown or extra text. Example format:
-[{"start": 0, "end": 3.5, "text": "Here’s the dashboard—you’ll see your projects listed right away."}, {"start": 3.5, "end": 8, "text": "To start something new, hit the New Project button in the top right."}]`;
+[{"start": 0, "end": 3.5, "text": "Welcome — in this tutorial we’ll walk through how to set up a payment schedule and record payments manually."}, {"start": 3.5, "end": 8, "text": "Head to the Payment Schedule section on the order details page and hit Add Schedule — a form opens where you can configure each payment."}]`;
+
+/**
+ * Escapes unescaped double quotes and literal control characters (newlines, tabs, etc.)
+ * inside "text": "..." values — the two most common Gemini JSON failure modes.
+ */
+function sanitizeTextField(json: string): string {
+  return json.replace(/"text"\s*:\s*"([\s\S]*?)"\s*(?=\})/g, (_, content: string) => {
+    const fixed = content
+      .replace(/\\"/g, '\x00')     // protect already-escaped quotes
+      .replace(/"/g, '\\"')         // escape bare quotes
+      .replace(/\x00/g, '\\"')      // restore
+      .replace(/\n/g, '\\n')        // escape literal newlines
+      .replace(/\r/g, '\\r')        // escape literal carriage returns
+      .replace(/\t/g, '\\t');       // escape literal tabs
+    return `"text": "${fixed}"`;
+  });
+}
 
 /**
  * Extracts the first JSON array from model output (handles code fences and trailing text).
@@ -112,15 +163,16 @@ export async function polishSegmentText(
 ): Promise<string> {
   const ai = getClient();
 
-  const prompt = `You are a voiceover script editor for screen recording tutorials.
+  const prompt = `You are a professional voiceover script editor for onboarding and customer support tutorials.
 
-Segment duration: ${durationSeconds.toFixed(1)} seconds (at ~150 words/minute, that's ~${(durationSeconds * 2.5).toFixed(0)} words maximum).
+Segment duration: ${durationSeconds.toFixed(1)} seconds (target: ~${(durationSeconds * 2.5).toFixed(0)} words at 150 wpm).
 
 Your task:
 - Fix grammar and spelling errors
 - Improve natural speech flow so it sounds like a person speaking, not reading
-- If the text is too long for the duration, trim it while keeping the core message
-- Do not add new information or change the meaning
+- Make the text as concise as possible while keeping the core message
+- Always return a complete, grammatically correct sentence — never truncate mid-thought even if it exceeds the target word count
+- Do not add new information or change the meaning, always sound friendly, engaging, helpful, and natural.
 
 Return ONLY the improved plain text. No quotes, no markdown, no explanation.
 
@@ -148,9 +200,12 @@ export async function generateTimestampedScript(
 ): Promise<ScriptSegment[]> {
   const ai = getClient();
 
+  const ext = path.extname(videoPath).toLowerCase();
+  const mimeTypeForUpload = ext === '.mp4' ? 'video/mp4' : 'video/quicktime';
+
   const file = await ai.files.upload({
     file: videoPath,
-    config: { mimeType: 'video/quicktime' },
+    config: { mimeType: mimeTypeForUpload },
   });
 
   if (!file.name) {
@@ -178,7 +233,7 @@ export async function generateTimestampedScript(
   }
 
   const uri = file.uri ?? (await ai.files.get({ name: file.name })).uri;
-  const mimeType = file.mimeType ?? 'video/quicktime';
+  const mimeType = file.mimeType ?? mimeTypeForUpload;
   if (!uri) {
     throw new Error('Gemini file has no URI after processing');
   }
@@ -189,6 +244,7 @@ export async function generateTimestampedScript(
       createPartFromUri(uri, mimeType),
       TRANSCRIPT_PROMPT,
     ]),
+    config: { responseMimeType: 'application/json' },
   });
 
   const text = response.text?.trim();
@@ -198,16 +254,24 @@ export async function generateTimestampedScript(
 
   const jsonStr = extractFirstJsonArray(text);
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonStr) as unknown;
-  } catch (parseErr) {
+  const attempts: Array<() => string> = [
+    () => jsonStr,
+    () => jsonrepair(jsonStr),
+    () => sanitizeTextField(jsonStr),
+    () => jsonrepair(sanitizeTextField(jsonStr)),
+  ];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
     try {
-      const repaired = jsonrepair(jsonStr);
-      parsed = JSON.parse(repaired) as unknown;
-    } catch (repairErr) {
-      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-      throw new Error(`Invalid JSON from Gemini (e.g. unescaped quotes in text): ${msg}`);
+      parsed = JSON.parse(attempt()) as unknown;
+      break;
+    } catch (err) {
+      lastErr = err;
     }
+  }
+  if (parsed === undefined) {
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    throw new Error(`Invalid JSON from Gemini (could not repair): ${msg}`);
   }
   if (!Array.isArray(parsed)) {
     throw new Error('Gemini response is not a JSON array');
