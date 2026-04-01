@@ -4,8 +4,10 @@
 
 import {
   GoogleGenAI,
+  Type,
   createUserContent,
   createPartFromUri,
+  type Schema,
 } from '@google/genai';
 import type { ScriptSegment } from '@/types';
 
@@ -34,8 +36,7 @@ For each distinct step or scene change, output one segment with:
 - end: end time in seconds (number)
 - text: one sentence for that moment, written to be read aloud in a natural voice
 
-Return ONLY a valid JSON array of objects, no markdown or extra text. Example format:
-[{"start": 0, "end": 3.5, "text": "Here’s the dashboard—you’ll see your projects listed right away."}, {"start": 3.5, "end": 8, "text": "To start something new, hit the New Project button in the top right."}]`;
+Respond with a JSON array only (no markdown fences or commentary). Each object must have numeric start/end (seconds) and a string text field for voiceover.`;
 
 /**
  * Extracts the first JSON array from model output (handles code fences and trailing text).
@@ -99,6 +100,34 @@ function extractFirstJsonArray(text: string): string {
   throw new Error('Unclosed JSON array in Gemini response');
 }
 
+/** Enforces API-level JSON so narration strings are safely escaped (no brittle JSON.parse on prose). */
+const SCRIPT_SEGMENTS_RESPONSE_SCHEMA: Schema = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      start: { type: Type.NUMBER, description: 'Segment start time in seconds' },
+      end: { type: Type.NUMBER, description: 'Segment end time in seconds' },
+      text: {
+        type: Type.STRING,
+        description: 'One sentence read-aloud voiceover for this moment',
+      },
+    },
+    required: ['start', 'end', 'text'],
+    propertyOrdering: ['start', 'end', 'text'],
+  },
+};
+
+function parseSegmentsJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const jsonStr = extractFirstJsonArray(text);
+    return JSON.parse(jsonStr);
+  }
+}
+
 /**
  * Uploads the video at videoPath to Gemini, generates a timestamped script, and returns segments.
  * videoPath must be an absolute path to a .MOV or other supported video file.
@@ -149,6 +178,10 @@ export async function generateTimestampedScript(
       createPartFromUri(uri, mimeType),
       TRANSCRIPT_PROMPT,
     ]),
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: SCRIPT_SEGMENTS_RESPONSE_SCHEMA,
+    },
   });
 
   const text = response.text?.trim();
@@ -156,8 +189,7 @@ export async function generateTimestampedScript(
     throw new Error('Gemini returned no script text');
   }
 
-  const jsonStr = extractFirstJsonArray(text);
-  const parsed = JSON.parse(jsonStr) as unknown;
+  const parsed = parseSegmentsJson(text) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error('Gemini response is not a JSON array');
   }
