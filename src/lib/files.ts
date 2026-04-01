@@ -67,12 +67,17 @@ export function readScriptByPath(scriptPath: string): string | null {
  * so it can be sent to TTS.
  */
 export function scriptMdToPlainText(md: string): string {
-  return md
+  const withoutComments = stripHtmlComments(md);
+  return withoutComments
     .split(/\n+/)
     .filter((line) => !line.startsWith('## '))
     .map((s) => s.trim())
     .filter(Boolean)
     .join('\n\n');
+}
+
+function stripHtmlComments(s: string): string {
+  return s.replace(/<!--[\s\S]*?-->/g, '');
 }
 
 const SEGMENT_HEADER_REGEX = /^##\s*(\d+(?:\.\d+)?)s\s*[–-]\s*(\d+(?:\.\d+)?)s\s*$/;
@@ -83,7 +88,7 @@ const SEGMENT_HEADER_REGEX = /^##\s*(\d+(?:\.\d+)?)s\s*[–-]\s*(\d+(?:\.\d+)?)s
  */
 export function parseScriptMdToSegments(md: string): ScriptSegment[] {
   const segments: ScriptSegment[] = [];
-  const blocks = md.split(/\n(?=## \d)/);
+  const blocks = stripHtmlComments(md).split(/\n(?=## \d)/);
   for (const block of blocks) {
     const trimmed = block.trim();
     if (!trimmed) continue;

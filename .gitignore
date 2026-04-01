@@ -49,6 +49,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-#plan text files
-*.md
 /docs
+/tasks

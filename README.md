@@ -1,107 +1,208 @@
-# Auto Instruction Generator (Script & Audio Generator)
+# Narri - Script & Audio Generator
 
-Turn a **silent screen recording** into a **timestamped narration script**, generate **per-segment voiceover audio**, and (optionally) **render a final MP4** with a picture-in-picture “avatar” overlay.
+Turn a **silent screen recording** into a **fully narrated video**.
 
-Built with **Next.js (App Router)** + local-first storage (SQLite) +:
-- **Gemini**: video → timestamped script
-- **ElevenLabs**: script segments → MP3
-- **FFmpeg**: stitch overlay + audio into a final MP4
+This tool watches you record your screen, writes a timestamped narration script using AI, lets you edit it, generates voiceover audio, and stitches everything into a final MP4 with an optional picture-in-picture avatar overlay.
+
+**No coding required to use it** — just install, add your API keys, and run.
+
+---
 
 ## What it does
 
-- **Upload or scan**: drop a `.mov` / `.mp4` into `/input` (or upload via the UI)
-- **Process**: sends the video to Gemini and generates a markdown script like:
-  - `## 0.0s – 3.7s` + narration text
-- **Review & edit**: adjust narration per segment in the job page
-- **Generate audio**: creates one MP3 per segment in `/output/<jobId>/`
-- **Render (optional)**: stitches your screen recording + avatar overlay + audio into `final.mp4`
+1. You drop in a screen recording (`.mov` or `.mp4`)
+2. Google Gemini watches the video and writes a timed narration script
+3. You review and edit the script in the browser
+4. ElevenLabs generates voiceover audio for each segment
+5. FFmpeg stitches the screen recording + audio + optional avatar overlay into a final MP4
+
+---
 
 ## Requirements
 
-- **Node.js**: recent LTS recommended
-- **Gemini API key**: `GEMINI_API_KEY`
-- **ElevenLabs API key**: `ELEVENLABS_API_KEY`
-  - Voice ID: `ELEVENLABS_VOICE_ID` (required; see your ElevenLabs dashboard)
-- **FFmpeg + ffprobe** (only required for “Render Final Video”)
+Before you start, you'll need:
+
+- **Node.js** (v18 or later) — [download here](https://nodejs.org)
+- **Bun** (package manager) — install by running:
+  ```bash
+  curl -fsSL https://bun.sh/install | bash
+  ```
+- **FFmpeg** (only needed for the final render step)
   - macOS: `brew install ffmpeg`
   - Windows: `winget install ffmpeg`
+  - Linux: `sudo apt install ffmpeg`
+- **A Google Gemini API key** — [get one free at Google AI Studio](https://aistudio.google.com/apikey)
+- **An ElevenLabs API key + Voice ID** — [sign up at ElevenLabs](https://elevenlabs.io)
 
-## Quickstart (local)
+---
 
-1. Install dependencies:
+## Setup (step by step)
+
+### 1. Get your API keys
+
+**Gemini (Google AI)**
+1. Go to [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Click **Create API key**
+3. Copy the key — you'll need it in a moment
+
+**ElevenLabs**
+1. Go to [https://elevenlabs.io](https://elevenlabs.io) and create a free account
+2. Go to your **Profile** → **API Keys** and copy your API key
+3. Go to **Voices**, pick a voice you like, and copy its **Voice ID** (shown under the voice name)
+
+---
+
+### 2. Install the project
+
+Open a terminal and run:
 
 ```bash
-npm install
+git clone https://github.com/xMmAI/video-script-generation.git
+cd video-script-generation
+bun install
 ```
 
-2. Create `.env.local` in the project root:
+---
+
+### 3. Add your API keys
+
+In the project folder, create a file called `.env.local` and paste in your keys:
+
+```
+# Required
+GEMINI_API_KEY=your_gemini_key_here
+ELEVENLABS_API_KEY=your_elevenlabs_key_here
+ELEVENLABS_VOICE_ID=your_voice_id_here
+
+# Optional — customize the narration for your product (see "Customizing the narration" below)
+PRODUCT_NAME=YourApp
+PRODUCT_DESCRIPTION=a short description of what your product does and who it's for
+PRODUCT_AUDIENCE=your target users learning to use the software
+```
+
+> This file is never committed to git — your keys stay private.
+
+---
+
+### 4. Start the app
 
 ```bash
-GEMINI_API_KEY="..."
-ELEVENLABS_API_KEY="..."
-ELEVENLABS_VOICE_ID="your_elevenlabs_voice_id"
+bun dev
 ```
 
-3. Start the dev server:
+Then open [http://localhost:3000](http://localhost:3000) in your browser.
 
-```bash
-npm run dev
+---
+
+## Using the app
+
+### Upload a recording
+
+Either:
+- Click **Upload** in the UI and select your `.mov` or `.mp4` file, or
+- Copy the file into the `/input` folder and click **Scan for new videos**
+
+### Process the video
+
+Click **Process** on the job. Gemini will watch your video and generate a timestamped narration script. This usually takes 30–90 seconds depending on video length.
+
+### Review and edit
+
+Open the job to see the script broken into segments like:
+
+```
+## 0.0s – 3.7s
+Here you can see the dashboard overview...
 ```
 
-4. Open `http://localhost:3000` and run a job:
+Click any segment to edit the narration text. Changes save automatically.
 
-- Upload a `.mov` / `.mp4` in the UI **or** copy a file into `/input`
-- Click **Scan for new videos**
-- Click **Process** on the job (Gemini generates the timestamped script)
-- Open the job and **edit narration per segment**
-- Click **Generate audio** (ElevenLabs creates per-segment MP3s)
-- (Optional) Click **Render Final Video** (FFmpeg generates `/output/<jobId>/final.mp4`)
+### Generate audio
 
-## Files & folders
+Click **Generate audio**. ElevenLabs will create an MP3 for each segment. This takes a few seconds per segment.
 
-- `input/`: your raw screen recordings (not committed)
-- `output/`: generated scripts/audio/videos (not committed)
-  - `output/<jobId>/<basename>_script.md`
-  - `output/<jobId>/<start>-<end>.mp3` (per-segment)
-  - `output/<jobId>/audio.mp3` (created during render if missing)
-  - `output/<jobId>/final.mp4` (render output)
-- `db/`: local SQLite database (`db/videogen.db`) (not committed)
-- `assets/`: avatar overlay media
-  - The renderer looks for `assets/talking_whisk.mp4`, `assets/talking_whisk.mov`, or `assets/avatar.mp4`
-  - For open-source distribution, you’ll typically provide your own `assets/avatar.mp4` locally (don’t commit proprietary media)
+### Render the final video (optional)
 
-## API overview
+If you want a finished MP4 with the audio baked in (and optionally a picture-in-picture avatar overlay), click **Render Final Video**.
 
-These are the main endpoints used by the UI:
+> FFmpeg must be installed for this step. The output file will be at `output/<jobId>/final.mp4`.
 
-- `POST /api/upload`: upload a `.mov`/`.mp4` into `/input`
-- `GET /api/scan`: scan `/input` and create new “jobs” for new files
-- `GET /api/jobs`: list jobs
-- `GET /api/jobs/:id`: job detail
-- `POST /api/process`: Gemini video → timestamped script (writes to `/output/<jobId>/..._script.md`)
-- `PATCH /api/jobs/:id/script/segment`: update the narrative text of one segment
-- `POST /api/jobs/:id/audio`: generate per-segment MP3s via ElevenLabs
-- `POST /api/render`: FFmpeg stitch → `/output/<jobId>/final.mp4`
-- `GET /api/output/...`: serve files out of `/output` to the browser
+---
 
-## Editing Gemini prompts
+## Avatar overlay (optional)
 
-Script generation (video → timestamped narration) is driven by a single system prompt. To change tone, style, or instructions:
+If you want a picture-in-picture "talking head" overlay on the final video:
 
-1. **File**: `src/lib/gemini.ts`
-2. **Prompt constant**: `TRANSCRIPT_PROMPT` (near the top of the file). Edit the multi-line template string to adjust:
-   - Narrator style (e.g. warm, formal, concise)
-   - Wording rules (e.g. “don’t start every segment with ‘You can…’”)
-   - Output format reminder (the prompt tells the model to return a JSON array of `{ start, end, text }` segments)
-3. **Model**: `GEMINI_TRANSCRIPTION_MODEL` is set to `gemini-2.5-flash`. Change this constant if you want to use another Gemini model.
+1. Record a clip of yourself talking (or use any video)
+2. Place it in the `/assets/` folder as `avatar.mp4`
+3. The renderer will automatically use the first 10 seconds as an intro and the last 10 seconds as an outro
 
-The code expects the model to return **only** a JSON array of objects with `start` (seconds), `end` (seconds), and `text` (string). If you change the requested format in the prompt, you must update the parsing in `generateTimestampedScript` (and any use of `ScriptSegment`) in the same file.
+If no avatar file is found, the render step will produce a clean screen recording + audio without the overlay.
 
-## Notes (privacy + cost)
+---
 
-- This project is **local-first** for files and DB, but it **uploads video to Gemini** and sends narration text to **ElevenLabs**.
-- Both services may have **usage costs**; avoid huge/long videos until you’re happy with prompts and flow.
+## Customizing the narration for your product
+
+By default the narration prompt is generic. Add these optional variables to `.env.local` to tailor the script to your specific product and audience:
+
+```
+PRODUCT_NAME=YourApp
+PRODUCT_DESCRIPTION=a short description of what your product does and who it's for
+PRODUCT_AUDIENCE=your target users learning to use the software
+```
+
+**Example — a recipe app:**
+```
+PRODUCT_NAME=CookFlow
+PRODUCT_DESCRIPTION=a recipe and meal planning app for home cooks
+PRODUCT_AUDIENCE=home cooks learning to plan meals and save recipes
+```
+
+Gemini will use your product name and audience in every script it generates. Restart the dev server after changing these values.
+
+---
+
+## Folder structure
+
+```
+input/       — drop your screen recordings here
+output/      — generated scripts, audio, and final videos land here
+assets/      — optional avatar video goes here
+db/          — local database (auto-created, don't edit)
+src/         — app source code
+```
+
+The `input/`, `output/`, and `db/` folders are local-only and never committed to git.
+
+---
+
+## Privacy & costs
+
+- Your video is **uploaded to Google Gemini** for transcription. Review [Google's data usage policy](https://ai.google.dev/gemini-api/terms) if this matters to you.
+- Narration text is sent to **ElevenLabs** for audio generation.
+- Both services have free tiers, but long or frequent use may incur costs. Start with short clips while testing.
+
+---
+
+## Troubleshooting
+
+**"FFmpeg not found"**
+Install FFmpeg using the instructions in the Requirements section above. After installing, restart your terminal.
+
+**Gemini times out on long videos**
+Try trimming your recording to under 10 minutes. Very long videos can hit API timeouts.
+
+**ElevenLabs audio sounds wrong**
+Go to [elevenlabs.io](https://elevenlabs.io), pick a different voice, and update `ELEVENLABS_VOICE_ID` in `.env.local`.
+
+**The app won't start**
+Make sure you ran `bun install` and that your `.env.local` file exists with all three keys filled in.
+
+**Jobs are missing after a restart**
+The local database lives in `db/`. If it gets deleted, the app will automatically rebuild job state from files in `output/` on next load.
+
+---
 
 ## License
 
-Add a `LICENSE` file before open-sourcing (MIT/Apache-2.0 are common choices).
+Apache 2.0 — see [LICENSE](./LICENSE) for details.

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 import db from '@/lib/db';
-import { INPUT_DIR, OUTPUT_DIR, createJobOutputDir, readScriptByPath, scriptMdToPlainText } from '@/lib/files';
+import { INPUT_DIR, OUTPUT_DIR, createJobOutputDir, readScriptByPath, scriptMdToPlainText, parseScriptMdToSegments } from '@/lib/files';
 import { checkFFmpeg, convertMovToMp4, getVideoDuration, stitchVideo } from '@/lib/ffmpeg';
 import type { Job } from '@/types';
 import { textToSpeech } from '@/lib/elevenlabs';
@@ -48,10 +48,10 @@ export async function POST(request: Request, _context: RouteContext) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  if (row.status !== 'done' && row.status !== 'rendered') {
+  if (row.status !== 'done' && row.status !== 'rendered' && row.status !== 'failed') {
     return NextResponse.json(
       {
-        error: `Job must be in 'done' or 'rendered' status to render. Current status: ${row.status}`,
+        error: `Job must be in 'done', 'rendered', or 'failed' status to render. Current status: ${row.status}`,
       },
       { status: 400 }
     );
@@ -140,13 +140,19 @@ export async function POST(request: Request, _context: RouteContext) {
       await convertMovToMp4(avatarPath, avatarOverlayPath);
     }
 
-    // 8. Call stitchVideo() with screen recording, avatar overlay, and audio
+    // 8. Parse segments from script for freeze-frame sync
+    const scriptMdForSegments = row.script_path ? readScriptByPath(row.script_path) : null;
+    const segments = scriptMdForSegments ? parseScriptMdToSegments(scriptMdForSegments) : [];
+
+    // 9. Call stitchVideo() with screen recording, avatar overlay, audio, and segments
     const finalVideoPathOnDisk = path.join(outputDir, 'final.mp4');
     await stitchVideo({
       screenRecordingPath: inputVideoPath,
       avatarOverlayPath,
       audioPath: audioFileOnDisk,
       outputPath: finalVideoPathOnDisk,
+      segments: segments.length > 0 ? segments : undefined,
+      jobOutputDir: segments.length > 0 ? outputDir : undefined,
     });
 
     const finalVideoPath = `${jobId}/final.mp4`;
@@ -170,16 +176,12 @@ export async function POST(request: Request, _context: RouteContext) {
       new Date().toISOString(),
       jobId
     );
-    const status =
-      message.includes('FFmpeg not found') || message.includes('ffmpeg')
-        ? 500
-        : 500;
     return NextResponse.json(
       {
         error: 'Render failed',
         details: message,
       },
-      { status }
+      { status: 500 }
     );
   }
 }
