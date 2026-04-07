@@ -703,36 +703,35 @@ export default function JobDetailPage() {
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
-   * Two-column side-by-side layout
-   * Left  — sticky video player sourced from /api/input/[job.input_file]
-   * Right — scrollable panel with all status sections and segment editor
+   * Job with input video: responsive layout
+   * — md+: two columns, fixed viewport height, script column scrolls independently
+   * — <md: single column; page scrolls (video + script flow together, nothing pinned)
    * ───────────────────────────────────────────────────────────────────────── */
   if (hasSideBySide) {
     return (
-      <main className="flex h-screen flex-col bg-background">
-        {/* Fixed-height header strip */}
+      <main className="flex min-h-screen flex-col bg-background md:h-screen md:overflow-hidden">
         <header className="shrink-0 border-b px-6 py-4">
           {JobHeader()}
         </header>
 
-        {/* Two-column content area fills remaining vertical space */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* LEFT: input video player — stays in place while segments scroll */}
-          <div className="flex w-1/2 flex-col gap-3 border-r p-6 overflow-hidden">
+        <div className="flex flex-col md:min-h-0 md:flex-1 md:flex-row md:overflow-hidden">
+          {/* Video: stacked on mobile (intrinsic height); md+ letterboxed in half viewport */}
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:p-6 md:min-h-0 md:w-1/2 md:shrink md:overflow-hidden md:border-b-0 md:border-r">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Original recording
             </p>
-            <video
-              ref={videoRef}
-              src={`/api/input/${encodeURIComponent(job.input_file!)}`}
-              controls
-              className="w-full rounded-lg border border-border bg-black"
-              onTimeUpdate={handleTimeUpdate}
-            />
+            <div className="flex w-full flex-col md:min-h-0 md:flex-1">
+              <video
+                ref={videoRef}
+                src={`/api/input/${encodeURIComponent(job.input_file!)}`}
+                controls
+                className="w-full rounded-lg border border-border bg-black object-contain md:h-full md:max-h-full"
+                onTimeUpdate={handleTimeUpdate}
+              />
+            </div>
           </div>
 
-          {/* RIGHT: scrollable status + segment editor */}
-          <div className="flex w-1/2 flex-col gap-4 overflow-y-auto p-6">
+          <div className="flex w-full flex-col gap-4 p-4 sm:p-6 md:min-h-0 md:w-1/2 md:flex-none md:overflow-y-auto">
             {StatusSections()}
           </div>
         </div>
