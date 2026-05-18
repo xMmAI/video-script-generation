@@ -338,10 +338,17 @@ export async function stitchVideo(params: {
         finalAudioPath = silentAudioPath;
         console.warn(`[ffmpeg] Segment ${i}: no audio file — using silence for ${clipDuration.toFixed(2)}s`);
       } else {
-        // Audio drives duration: extract only min(audioDuration, segDuration) of video.
-        // This prevents dead-time padding from accumulating across segments.
         const audioDuration = await getAudioDuration(audioFile);
-        const extractDuration = Math.min(audioDuration, segDuration);
+
+        // Gemini intentionally writes short narrations for long dead-time windows (loading,
+        // navigation). If padding would add more than MAX_SILENCE_SECONDS of silence, that's
+        // dead time — trim the video to what the narration covers so audio stays continuous.
+        // For small gaps the scene is a real action that takes slightly longer than the narration
+        // — show the full action and pad with a brief silence.
+        const MAX_SILENCE_SECONDS = 3.0;
+        const extractDuration = (segDuration - audioDuration) > MAX_SILENCE_SECONDS
+          ? audioDuration   // dead time: trim video to narration length, skip the gap
+          : segDuration;    // action: show full scene (audio padded if needed)
 
         const segClipPath = path.join(TEMP_DIR, `seg_clip_${i}.mp4`);
         await extractClip(screenNoAudioPath, seg.start, extractDuration, segClipPath);
@@ -365,19 +372,27 @@ export async function stitchVideo(params: {
           finalAudioPath = audioFile;
           console.log(`[ffmpeg] Segment ${i}: past video end — freeze last frame for ${audioDuration.toFixed(2)}s audio`);
         } else if (clipDuration < audioDuration - 0.05) {
-          // Video clip shorter than audio (hit real end mid-extract) → freeze-extend.
+          // Video hit real end before audio finished → freeze-extend video.
           lastValidClipPath = segClipPath;
           const segAdjPath = path.join(TEMP_DIR, `seg_adj_${i}.mp4`);
           await freezeExtend(segClipPath, audioDuration - clipDuration, segAdjPath);
           finalClipPath = segAdjPath;
           finalAudioPath = audioFile;
           console.log(`[ffmpeg] Segment ${i}: clip=${clipDuration.toFixed(2)}s audio=${audioDuration.toFixed(2)}s → freeze-extended by ${(audioDuration - clipDuration).toFixed(2)}s`);
+        } else if (audioDuration < clipDuration - 0.05) {
+          // Audio shorter than scene → pad audio with silence so full scene plays.
+          lastValidClipPath = segClipPath;
+          const paddedAudioPath = path.join(TEMP_DIR, `seg_audio_padded_${i}.mp3`);
+          await padAudioWithSilence(audioFile, clipDuration, paddedAudioPath);
+          finalClipPath = segClipPath;
+          finalAudioPath = paddedAudioPath;
+          console.log(`[ffmpeg] Segment ${i}: audio=${audioDuration.toFixed(2)}s clip=${clipDuration.toFixed(2)}s → audio padded with ${(clipDuration - audioDuration).toFixed(2)}s silence`);
         } else {
-          // Clip matches audio (or is within 0.05s). Use both as-is.
+          // Clip matches audio (within 0.05s). Use both as-is.
           lastValidClipPath = segClipPath;
           finalClipPath = segClipPath;
           finalAudioPath = audioFile;
-          console.log(`[ffmpeg] Segment ${i}: clip=${clipDuration.toFixed(2)}s audio=${audioDuration.toFixed(2)}s → matched (extracted ${extractDuration.toFixed(2)}s of ${segDuration.toFixed(2)}s scene)`);
+          console.log(`[ffmpeg] Segment ${i}: clip=${clipDuration.toFixed(2)}s audio=${audioDuration.toFixed(2)}s → matched`);
         }
       }
 
@@ -391,11 +406,27 @@ export async function stitchVideo(params: {
     const combinedVideoPath = path.join(TEMP_DIR, 'combined_video.mp4');
     await execa('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', concatListPath, '-c', 'copy', combinedVideoPath]);
 
-    // Concatenate adjusted audio files (with silence padding where clip > audio).
-    const concatAudioListPath = path.join(TEMP_DIR, `concat_audio_${Date.now()}.txt`);
-    fs.writeFileSync(concatAudioListPath, adjustedAudios.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'), 'utf-8');
+    // Use the concat filter (not the concat demuxer) to assemble audio.
+    // The concat filter fully decodes every input at the sample level before stitching,
+    // so mixed MP3/WAV formats and variable sample rates are all normalized correctly.
+    // The demuxer (-f concat -c copy) can't do this — it mangles timestamps with mixed formats.
+    const audioInputArgs: string[] = [];
+    const audioFilterParts: string[] = [];
+    for (let j = 0; j < adjustedAudios.length; j++) {
+      audioInputArgs.push('-i', adjustedAudios[j]);
+      audioFilterParts.push(`[${j}:a]`);
+    }
+    const concatFilter = `${audioFilterParts.join('')}concat=n=${adjustedAudios.length}:v=0:a=1[aout]`;
     const combinedAudioPath = path.join(TEMP_DIR, 'combined_audio.mp3');
-    await execa('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', concatAudioListPath, '-c', 'copy', combinedAudioPath]);
+    await execa('ffmpeg', [
+      '-y',
+      ...audioInputArgs,
+      '-filter_complex', concatFilter,
+      '-map', '[aout]',
+      '-c:a', 'libmp3lame',
+      '-q:a', '2',
+      combinedAudioPath,
+    ]);
 
     videoForOverlay = combinedVideoPath;
     segmentAudioPath = combinedAudioPath;

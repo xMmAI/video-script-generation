@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Auto Instruction Gen",
+  title: "Narri",
   description: "Turn silent screen recordings into narrated videos with AI",
 };
 

@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       `INSERT INTO jobs (id, title, status, input_file, script_path, audio_path, avatar_intro_path, avatar_outro_path, final_video_path, youtube_url, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, title, status, input_file, null, null, null, null, null, null, now, now);
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'Failed to create job' }, { status: 500 });
   }
 

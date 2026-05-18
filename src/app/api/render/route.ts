@@ -7,13 +7,11 @@ import { checkFFmpeg, convertMovToMp4, getVideoDuration, stitchVideo } from '@/l
 import type { Job } from '@/types';
 import { textToSpeech } from '@/lib/elevenlabs';
 
-type RouteContext = { params: Promise<unknown> };
-
 /**
  * POST /api/render
  * Body: { jobId: string }
  */
-export async function POST(request: Request, _context: RouteContext) {
+export async function POST(request: Request) {
   let body: { jobId?: string };
   try {
     body = (await request.json()) as { jobId?: string };

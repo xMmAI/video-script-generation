@@ -91,6 +91,8 @@ export default function JobDetailPage() {
   const [activeSegmentIndex, setActiveSegmentIndex] = useState<number>(-1);
   /** Refs to each rendered segment card div, keyed by segment index. */
   const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  /** Refs to each rendered audio element, keyed by segment index. */
+  const audioRefs = useRef<Map<number, HTMLAudioElement>>(new Map());
 
   useEffect(() => {
     if (!id) return;
@@ -144,6 +146,20 @@ export default function JobDetailPage() {
   }, [activeSegmentIndex]);
 
   /**
+   * When the active segment changes, stop any other audio and auto-play the new segment's audio.
+   * This lets the user hear narration in sync with the video without manually clicking each player.
+   */
+  useEffect(() => {
+    if (!job?.audio_path || activeSegmentIndex < 0) return;
+    const el = audioRefs.current.get(activeSegmentIndex);
+    // Only auto-play if the element hasn't started yet (currentTime is 0 and paused).
+    // This lets audio finish naturally without cutting it off when the next segment activates.
+    if (el && el.paused && el.currentTime === 0) {
+      el.play().catch(() => {});
+    }
+  }, [activeSegmentIndex, job?.audio_path]);
+
+  /**
    * Called on every video timeupdate event.
    * Finds the segment whose [start, end) range contains the current playhead
    * and updates activeSegmentIndex when it changes.
@@ -151,7 +167,13 @@ export default function JobDetailPage() {
   function handleTimeUpdate() {
     if (!videoRef.current || !segments) return;
     const t = videoRef.current.currentTime;
-    const idx = segments.findIndex((s) => t >= s.start && t < s.end);
+    let idx = segments.findIndex((s) => t >= s.start && t < s.end);
+    // When playhead is in a gap between segments, stay on the last segment whose start has passed.
+    if (idx < 0) {
+      for (let i = segments.length - 1; i >= 0; i--) {
+        if (t >= segments[i].start) { idx = i; break; }
+      }
+    }
     const next = idx >= 0 ? idx : -1;
     if (next !== activeSegmentIndex) {
       setActiveSegmentIndex(next);
@@ -566,6 +588,10 @@ export default function JobDetailPage() {
 
                   {job?.audio_path && (
                     <audio
+                      ref={(el) => {
+                        if (el) audioRefs.current.set(seg.index, el);
+                        else audioRefs.current.delete(seg.index);
+                      }}
                       key={audioSrc}
                       controls
                       src={audioSrc}

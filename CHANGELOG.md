@@ -28,37 +28,25 @@ All notable changes to Narri are documented here.
 - Retry button on home page was re-running Gemini transcription for jobs that already had approved scripts and audio — now routes to `/api/render`
 - Empty clip crash (`Duration: N/A`, exit 234) when a segment's start timestamp exceeded the actual video duration — now detected via measured clip duration (< 0.05 s = past end) and handled with freeze-from-last-frame
 - Avatar overlay duration was hardcoded to 10 s; now reads the actual asset file duration
+- Audio/video sync: replaced `-f concat -c copy` (concat demuxer) with `filter_complex concat` for audio assembly — demuxer mangles timestamps with mixed-format inputs (ElevenLabs VBR MP3 + generated silence); filter fully decodes all inputs to raw samples before stitching, eliminating drift
+- Dead-time silence gaps: Gemini intentionally writes short narrations for long load/navigation windows; previously this padded 40+ seconds of silence into the rendered track. Now uses a 3-second threshold — gaps > 3 s trim video to narration length (dead time is skipped); gaps ≤ 3 s show full scene and pad audio with brief silence
+- Missing script segment for job `946274a1` — `## 202.4s – 217.3s` header was absent from script markdown despite `202.4-217.3.mp3` existing; renderer silently dropped both the video and audio for that 14.9 s window
 
 ---
 
-## 🔬 Open Investigation — Audio/Video Sync (to continue)
+## 🔬 Audio/Video Sync — Current State
 
-**Status:** Actively broken. Multiple approaches tried, none fully correct yet.
+### Behaviour as of this session
 
-### The problem
-Segments have a `start`/`end` in the original video (e.g. `## 44.5s – 89.0s`) and a matching MP3 file. The user expects: **audio for segment X should play at approximately `seg.start` seconds in the rendered output** — matching when that video footage appears.
+| Case | Behaviour |
+|------|-----------|
+| `audio > scene` | Freeze-extend video to match audio duration |
+| `audio < scene` by ≤ 3 s | Show full scene; pad audio with silence |
+| `audio < scene` by > 3 s | Dead time (Gemini-collapsed navigation/loading) — trim video to narration length, skip the gap |
+| Past source video end | Freeze last known frame for audio duration |
 
-### What was tried
+### Known limitation
+Dead-time segments produce a visible jump cut in the rendered video (the source recording jumps forward by the skipped window). This is acceptable for navigation/loading but can feel abrupt if Gemini miscategorises a meaningful action as dead time. The threshold (`MAX_SILENCE_SECONDS = 3.0` in `stitchVideo()`) can be tuned if this becomes a problem.
 
-| Attempt | Approach | Result |
-|---------|----------|--------|
-| v1 | Pad audio with silence to fill full `seg.end - seg.start` | Audio plays at correct video position but dead-time segments (e.g. 44.5 s scene, 11 s audio) add 33 s of silence — cumulative drift pushes all subsequent audio 32 s late |
-| v2 | Extract only `min(audioDuration, segDuration)` of video; freeze-extend if needed | Eliminates silence padding but skips video footage in dead-time segments — video jumps forward, most segments freeze |
-
-### Root cause
-The two constraints are in tension:
-1. **Audio must play at `seg.start` seconds** (user expectation)
-2. **Video must not skip footage** (continuous playback)
-
-Satisfying (1) without (2) → v1 drift. Satisfying (2) without (1) → v2 jumps.
-
-### Correct approach (not yet implemented)
-Build a **timeline-based render** that tracks `renderTime` (rendered output position) vs `videoTime` (original video position):
-
-- For each segment, extract video from `videoTime` to `seg.end` (continuous, no skipping)
-- If audio duration > scene duration → freeze-extend the clip; increment a `cumulativeFreeze` offset
-- Audio is placed at `seg.start + cumulativeFreeze` in the rendered output (not at cumulative sum of previous segment durations)
-- Build one mixed audio track: silence-padded gaps between audio segments at their correct rendered timestamps (using `adelay` filter or concat with calculated silence durations)
-- This keeps video continuous AND aligns audio to the footage it narrates
-
-**Key files to change:** `src/lib/ffmpeg.ts` — `stitchVideo()` segment loop (lines ~307–400)
+### Next candidate improvement
+If jump cuts from dead-time skips are too jarring, the correct fix is speed-ramping: use FFmpeg `setpts` to play the dead-time footage at 4–8× speed under the narration rather than cutting it entirely. This would require measuring the speed factor per segment and applying a matching `atempo` to the audio.

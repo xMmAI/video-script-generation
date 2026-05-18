@@ -233,11 +233,11 @@ export async function polishSegmentText(
 Segment duration: ${durationSeconds.toFixed(1)} seconds (target: ~${(durationSeconds * 2.5).toFixed(0)} words at 150 wpm).
 
 Your task:
-- Fix grammar and spelling errors
+- Fix grammar and spelling errors only
 - Improve natural speech flow so it sounds like a person speaking, not reading
-- Make the text as concise as possible while keeping the core message
-- Always return a complete, grammatically correct sentence — never truncate mid-thought even if it exceeds the target word count
-- Do not add new information or change the meaning, always sound friendly, engaging, helpful, and natural.
+- Preserve the full meaning and length of the original — do NOT shorten, condense, or remove content
+- Do not add new information or change the meaning
+- Always return a complete, grammatically correct sentence
 
 Return ONLY the improved plain text. No quotes, no markdown, no explanation.
 
