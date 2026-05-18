@@ -23,19 +23,29 @@ function getClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
-const PRODUCT_NAME = process.env.PRODUCT_NAME ?? 'BakeSuite';
-const PRODUCT_DESCRIPTION =
-  process.env.PRODUCT_DESCRIPTION ??
-  'a bakery management platform for small bakery businesses that helps bakeries manage orders, quotes, invoices, contacts, inventory, and payments';
-const PRODUCT_AUDIENCE =
-  process.env.PRODUCT_AUDIENCE ?? 'bakery owners or staff learning to use the software';
+function getProductContext(): {
+  name: string;
+  description: string;
+  audience: string;
+} {
+  return {
+    name: process.env.PRODUCT_NAME ?? 'the application',
+    description:
+      process.env.PRODUCT_DESCRIPTION ??
+      'a software application demonstrated in the screen recording',
+    audience:
+      process.env.PRODUCT_AUDIENCE ?? 'people learning to use the software',
+  };
+}
 
-const TRANSCRIPT_PROMPT = `You are analyzing a silent screen recording of ${PRODUCT_NAME}. Produce a timestamped narration script to be read aloud as a warm, natural tutorial voiceover.
+function buildTranscriptPrompt(): string {
+  const { name, description, audience } = getProductContext();
+  return `You are analyzing a silent screen recording of ${name}. Produce a timestamped narration script to be read aloud as a warm, natural tutorial voiceover.
 
 PRODUCT CONTEXT:
-- The product is called ${PRODUCT_NAME}
-- It is ${PRODUCT_DESCRIPTION}
-- Viewers are ${PRODUCT_AUDIENCE}
+- The product is called ${name}
+- It is ${description}
+- Viewers are ${audience}
 
 INTRO (first segment, 0–3s approx):
 - Always open with a brief welcome and a specific description of what this tutorial covers
@@ -56,7 +66,7 @@ WHAT TO NARRATE:
 - Describe what’s visible and what action is taken, in a way that guides the viewer
 - Follow an action → outcome rhythm where natural: "Click X — a form opens where you can..."
 - When a feature has a clear benefit, briefly explain WHY it matters: e.g. "Due dates you set here will also appear on the customer invoice."
-- Use ${PRODUCT_NAME} by name when referring to the app itself
+- Use ${name} by name when referring to the app itself
 
 HANDLING DEAD TIME:
 - When the screen shows navigation, loading, waiting, or minimal change over a long period — collapse it into ONE short segment covering the whole gap
@@ -76,6 +86,7 @@ Respond with a JSON array only (no markdown fences or commentary). Each object m
 
 Example format:
 [{"start": 0, "end": 3.5, "text": "Welcome — in this tutorial we’ll walk through how to set up a payment schedule and record payments manually."}, {"start": 3.5, "end": 8, "text": "Head to the Payment Schedule section on the order details page and hit Add Schedule — a form opens where you can configure each payment."}]`;
+}
 
 /**
  * Escapes unescaped double quotes and literal control characters (newlines, tabs, etc.)
@@ -307,7 +318,7 @@ export async function generateTimestampedScript(
     model: GEMINI_TRANSCRIPTION_MODEL,
     contents: createUserContent([
       createPartFromUri(uri, mimeType),
-      TRANSCRIPT_PROMPT,
+      buildTranscriptPrompt(),
     ]),
     config: {
       responseMimeType: 'application/json',

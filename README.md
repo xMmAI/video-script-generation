@@ -64,23 +64,29 @@ bun install
 
 ---
 
-### 3. Add your API keys
+### 3. Configure environment
 
-In the project folder, create a file called `.env.local` and paste in your keys:
+Copy the example file and edit it with your keys and product details:
+
+```bash
+cp .env.example .env.local
+```
+
+Then open `.env.local` and set:
 
 ```
-# Required
+# Required — API keys
 GEMINI_API_KEY=your_gemini_key_here
 ELEVENLABS_API_KEY=your_elevenlabs_key_here
 ELEVENLABS_VOICE_ID=your_voice_id_here
 
-# Optional — customize the narration for your product (see "Customizing the narration" below)
+# Recommended — branding for AI narration (see below)
 PRODUCT_NAME=YourApp
 PRODUCT_DESCRIPTION=a short description of what your product does and who it's for
-PRODUCT_AUDIENCE=your target users learning to use the software
+PRODUCT_AUDIENCE=people learning to use the software
 ```
 
-> This file is never committed to git — your keys stay private.
+> `.env.local` is never committed to git. Your API keys and product branding stay on your machine. Restart `bun dev` after changing these values.
 
 ---
 
@@ -115,7 +121,7 @@ Open the job to see the script broken into segments like:
 Here you can see the dashboard overview...
 ```
 
-Click any segment to edit the narration text. Changes save automatically.
+Click any segment to edit the narration text. Changes save automatically. Use **Polish with AI** on a segment for grammar and flow suggestions (you approve before saving).
 
 ### Generate audio
 
@@ -141,15 +147,17 @@ If no avatar file is found, the render step will produce a clean screen recordin
 
 ---
 
-## Customizing the narration for your product
+## Product branding (`.env.local`)
 
-By default the narration prompt is generic. Add these optional variables to `.env.local` to tailor the script to your specific product and audience:
+Narri does **not** ship with a fixed product name in the code. All branding lives in `.env.local`:
 
-```
-PRODUCT_NAME=YourApp
-PRODUCT_DESCRIPTION=a short description of what your product does and who it's for
-PRODUCT_AUDIENCE=your target users learning to use the software
-```
+| Variable | Purpose |
+|----------|---------|
+| `PRODUCT_NAME` | App name spoken in tutorials (e.g. your SaaS name) |
+| `PRODUCT_DESCRIPTION` | One-line summary of what the product does |
+| `PRODUCT_AUDIENCE` | Who is learning (e.g. training teams, new hires) |
+
+Gemini uses these on every transcription. If you omit them, narration falls back to generic wording (“the application”, “people learning to use the software”). For training material, set all three so scripts name your product correctly.
 
 **Example — a recipe app:**
 ```
@@ -158,7 +166,7 @@ PRODUCT_DESCRIPTION=a recipe and meal planning app for home cooks
 PRODUCT_AUDIENCE=home cooks learning to plan meals and save recipes
 ```
 
-Gemini will use your product name and audience in every script it generates. Restart the dev server after changing these values.
+Each teammate clones the repo once, copies `.env.example` to `.env.local`, and keeps their own branding and API keys locally.
 
 ---
 
@@ -196,7 +204,10 @@ Try trimming your recording to under 10 minutes. Very long videos can hit API ti
 Go to [elevenlabs.io](https://elevenlabs.io), pick a different voice, and update `ELEVENLABS_VOICE_ID` in `.env.local`.
 
 **The app won't start**
-Make sure you ran `bun install` and that your `.env.local` file exists with all three keys filled in.
+Make sure you ran `bun install` and that `.env.local` exists (copy from `.env.example`) with all three API keys filled in.
+
+**Scripts don't mention our product name**
+Set `PRODUCT_NAME`, `PRODUCT_DESCRIPTION`, and `PRODUCT_AUDIENCE` in `.env.local` and restart the dev server.
 
 **Jobs are missing after a restart**
 The local database lives in `db/`. If it gets deleted, the app will automatically rebuild job state from files in `output/` on next load.

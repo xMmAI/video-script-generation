@@ -17,7 +17,7 @@ function getConfig(): { apiKey: string; voiceId: string } {
 }
 
 /**
- * Convert text to speech using the configured voice (e.g. BakeSuite).
+ * Convert text to speech using the configured ElevenLabs voice.
  * Returns the raw audio bytes (MP3).
  */
 export async function textToSpeech(text: string): Promise<Buffer> {
